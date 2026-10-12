@@ -11,8 +11,22 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
+    //Obtain the size of the screen .i.
+    final Size size = MediaQuery.of(context).size;
     return Scaffold(
-      body: RiveAnimation.asset('assets/Os0g0RdO.riv'),
-      );
+      body: SafeArea(
+        child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          children: [
+            SizedBox(
+              width: size.width,
+              height: 200,
+              child: RiveAnimation.asset('assets/OS0g0RdO.riv'),
+            ),
+          ],
+        ),
+      )),
+    );
   }
 }

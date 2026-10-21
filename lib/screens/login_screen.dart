@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:rive/rive.dart';
 
@@ -9,8 +11,14 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _animationDebounce = Duration(milliseconds: 80);
+  static const _idleDelay = Duration(seconds: 3);
+  Timer? _animationTimer;
+  Timer? _idleTimer;
+  bool _isIdle = false;
+
   //control para mostrar u ocultar la contraseña
-  bool _IsObscuretext = true;
+  bool _isObscureText = true;
 
   //1.1 Crear el cerebro de la animacion
   StateMachineController? _controller;
@@ -18,23 +26,89 @@ class _LoginScreenState extends State<LoginScreen> {
   //1.2 SMI: StateMachineInput / Entrada de maquina de estado
   SMIBool? _isChecking;
   SMIBool? _isHandsUp;
-  SMITrigger? _trigSuccess;
-  SMITrigger? _trigFail;
   SMINumber? _numLook;
 
-  void _checkEmail() {
-    _isHandsUp?.change(false);
-    _isChecking?.change(true);
+  //2.1 Crear variables para focusNode
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
+  final _emailController = TextEditingController();
+
+  //2.2 Crear los listeners (Oyentes/chismosos)
+  @override
+  void initState() {
+    super.initState();
+    _emailFocusNode.addListener(_scheduleAnimation);
+    _passwordFocusNode.addListener(_scheduleAnimation);
+    _emailController.addListener(_scheduleAnimation);
   }
 
-  void _coverEyes() {
-    _isChecking?.change(false);
-    _isHandsUp?.change(true);
+  void _scheduleAnimation() {
+    _isIdle = false;
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleDelay, () {
+      _idleTimer = null;
+      if (!mounted) return;
+      _isIdle = true;
+      _animationTimer?.cancel();
+      _animationTimer = null;
+      _syncAnimation();
+    });
+    _animationTimer?.cancel();
+    _animationTimer = Timer(_animationDebounce, () {
+      _animationTimer = null;
+      if (mounted) _syncAnimation();
+    });
+  }
+
+  void _syncAnimation() {
+    _isChecking?.change(!_isIdle && _emailFocusNode.hasFocus);
+    _isHandsUp?.change(
+      !_isIdle && _passwordFocusNode.hasFocus && _isObscureText,
+    );
+    final selection = _emailController.selection;
+    final position = selection.isValid
+        ? selection.extentOffset
+        : _emailController.text.length;
+    _numLook?.change(position.clamp(0, 100).toDouble());
+  }
+
+  void _onRiveInit(Artboard artboard) {
+    final controller = StateMachineController.fromArtboard(
+      artboard,
+      'Login Machine',
+    );
+    if (controller == null) {
+      throw StateError('El archivo Rive no contiene Login Machine.');
+    }
+
+    final isChecking = controller.getBoolInput('isChecking');
+    final isHandsUp = controller.getBoolInput('isHandsUp');
+    final numLook = controller.getNumberInput('numLook');
+    if (isChecking == null || isHandsUp == null || numLook == null) {
+      controller.dispose();
+      throw StateError(
+        'Faltan las entradas de mirada o manos en Login Machine.',
+      );
+    }
+
+    _controller?.dispose();
+    _controller = controller;
+    _isChecking = isChecking;
+    _isHandsUp = isHandsUp;
+    _numLook = numLook;
+    artboard.addController(controller);
+    // El usuario puede enfocar un campo antes de que termine de cargar Rive.
+    _syncAnimation();
   }
 
   @override
   void dispose() {
+    _animationTimer?.cancel();
+    _idleTimer?.cancel();
     _controller?.dispose();
+    _emailController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -54,45 +128,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 200,
                   child: RiveAnimation.asset(
                     'assets/OS0g0RdO.riv',
-                    //1.3 Vincular la animacion
-                    onInit: (artboard) {
-                      _controller = StateMachineController.fromArtboard(
-                        artboard,
-                        'Login Machine',
-                      );
-                      //1.4 verificar si inicio bien
-                      if (_controller == null) return;
-
-                      //agregar el controlador al tablero
-                      artboard.addController(_controller!);
-
-                      //1.5 Vincular las entradas de la maquina de estado
-                      _isChecking = _controller?.findInput<bool>(
-                        'isChecking',
-                      ) as SMIBool?;
-                      _isHandsUp =
-                          _controller?.findInput<bool>('isHandsUp') as SMIBool?;
-                      _trigSuccess = _controller?.findInput<bool>(
-                        'trigSuccess',
-                      ) as SMITrigger?;
-                      _trigFail = _controller?.findInput<bool>(
-                        'trigFail',
-                      ) as SMITrigger?;
-                      _numLook = _controller?.findInput<double>(
-                        'numLook',
-                      ) as SMINumber?;
-                    },
+                    onInit: _onRiveInit,
                   ),
                 ),
 
                 const SizedBox(height: 10),
                 //Email
                 TextField(
-                  onTap: _checkEmail,
-                  onChanged: (value) {
-                    _checkEmail();
-                    _numLook?.change(value.length.toDouble());
-                  },
+                  focusNode: _emailFocusNode,
+                  controller: _emailController,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _passwordFocusNode.requestFocus(),
+                  onTapOutside: (_) => _emailFocusNode.unfocus(),
                   //para mostrar un tipo de teclado
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
@@ -106,24 +153,26 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 10),
                 //Password
                 TextField(
-                  onTap: _coverEyes,
-                  onChanged: (value) {
-                    _coverEyes();
-                  },
-                  obscureText: _IsObscuretext,
+                  focusNode: _passwordFocusNode,
+                  onChanged: (_) => _scheduleAnimation(),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _passwordFocusNode.unfocus(),
+                  onTapOutside: (_) => _passwordFocusNode.unfocus(),
+                  obscureText: _isObscureText,
                   decoration: InputDecoration(
                     hintText: "Password",
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _IsObscuretext
+                        _isObscureText
                             ? Icons.visibility
                             : Icons.visibility_off,
                       ),
                       onPressed: () {
                         setState(() {
-                          _IsObscuretext = !_IsObscuretext;
+                          _isObscureText = !_isObscureText;
                         });
+                        _scheduleAnimation();
                       },
                     ),
                     border: OutlineInputBorder(

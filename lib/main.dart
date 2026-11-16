@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:login_rive_animation/screens/login_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-void main() {
-  runApp(const MainApp());
+import 'firebase_options.dart';
+import 'screens/login_screen.dart';
+
+Future<void> main() async {
+  // Encender el puente nativo antes de usar Firebase
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializar Firebase usando las credenciales de firebase_options.dart
+  await Firebase.initializeApp(options: firebaseOptions);
+
+  runApp(const MyApp());
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'My App',
-      home: LoginScreen(),
+      title: 'Flutter Demo',
+      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
+      home: const LoginScreen(),
     );
   }
 }
